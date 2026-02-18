@@ -1,0 +1,119 @@
+skill:
+  name: "repo-researcher"
+  version: "1.0.0"
+  description: "Searches codebase for evidence related to documentation topics"
+  
+  author: "EVA Foundation"
+  category: "documentation"
+  tags:
+    - research
+    - code-search
+    - evidence-collection
+  
+  inputs:
+    - name: "topic"
+      type: "string"
+      required: true
+      description: "Main topic to research (e.g., 'authentication', 'deployment')"
+    
+    - name: "scope"
+      type: "string"
+      required: false
+      description: "Scope to narrow search (e.g., 'backend', 'frontend', 'functions')"
+      default: null
+    
+    - name: "search_terms"
+      type: "list[string]"
+      required: false
+      description: "Specific terms to search for (e.g., ['OAuth', 'PKCE', 'Entra ID'])"
+      default: []
+    
+    - name: "file_patterns"
+      type: "list[string]"
+      required: false
+      description: "File glob patterns to search (e.g., ['**/*.py', 'app/backend/**'])"
+      default: []
+  
+  outputs:
+    - name: "evidence"
+      type: "dict"
+      description: "Structured evidence with findings organized by category"
+      schema:
+        topic: string
+        scope: string
+        timestamp: string
+        findings:
+          semantic: list[dict]
+          files: list[string]
+          code_snippets: list[dict]
+          configurations: list[dict]
+          architecture: list[dict]
+        summary:
+          total_files: int
+          total_matches: int
+          confidence: string  # low, medium, high
+  
+  configuration:
+    # Paths to search (relative to workspace root)
+    search_paths:
+      - "app/backend"
+      - "app/frontend"
+      - "functions"
+      - "infra"
+    
+    # Patterns to exclude from search
+    excluded_paths:
+      - "__pycache__"
+      - "node_modules"
+      - ".venv"
+      - "dist"
+      - "build"
+      - ".git"
+    
+    # Search strategy weights
+    search_strategy:
+      semantic_weight: 0.4
+      file_match_weight: 0.3
+      text_match_weight: 0.3
+  
+  llm_config:
+    # LLM not used by this skill (it does code search only)
+    required: false
+  
+  dependencies:
+    tools:
+      - "semantic_search"  # VS Code semantic search
+      - "file_search"      # VS Code file search
+      - "grep_search"      # VS Code grep search
+    
+    packages:
+      - "pyyaml>=6.0"
+      - "rich>=13.0"
+  
+  usage_example: |
+    from repo_researcher_skill import RepoResearcherSkill
+    
+    researcher = RepoResearcherSkill(
+        workspace_root=Path("c:/repo"),
+        config_path=Path("skill-manifests/repo-researcher.yaml")
+    )
+    
+    evidence = researcher.execute(
+        topic="authentication",
+        scope="backend",
+        search_terms=["OAuth", "PKCE", "Entra ID"]
+    )
+    
+    print(f"Found {evidence['summary']['total_matches']} pieces of evidence")
+    print(f"Confidence: {evidence['summary']['confidence']}")
+  
+  validation:
+    # Validation rules for outputs
+    min_confidence: "low"
+    min_files: 1
+    max_retries: 0  # No retries for research
+  
+  metadata:
+    execution_time_estimate: "10-30 seconds"
+    resource_usage: "low"
+    idempotent: true  # Same inputs always produce same outputs
