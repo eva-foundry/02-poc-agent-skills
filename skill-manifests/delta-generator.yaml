@@ -1,0 +1,139 @@
+skill:
+  name: "delta-generator"
+  version: "1.0.0"
+  description: "Generates documentation using baseline document + repo evidence"
+  
+  author: "EVA Foundation"
+  category: "documentation"
+  tags:
+    - generation
+    - delta-updates
+    - AI-assisted
+    - consistency
+  
+  inputs:
+    - name: "file_name"
+      type: "string"
+      required: true
+      description: "Name of document to generate (e.g., 'security-architecture.md')"
+    
+    - name: "evidence"
+      type: "dict"
+      required: true
+      description: "Evidence dict from RepoResearcherSkill"
+    
+    - name: "save_output"
+      type: "boolean"
+      required: false
+      description: "Whether to save output file"
+      default: true
+  
+  outputs:
+    - name: "result"
+      type: "dict"
+      description: "Generation result with content and metadata"
+      schema:
+        file_name: string
+        baseline_path: string
+        output_path: string
+        sections: list[dict]
+        summary:
+          total: int
+          updated: int
+          unchanged: int
+          errors: int
+        content: string
+        generated_at: string
+  
+  configuration:
+    # Path to baseline documents (source v0.2)
+    baseline_dir: "../../01-documentation-generator/source-docs-v0.2"
+    
+    # Path to output directory
+    output_dir: "../../01-documentation-generator/generated-output-skills"
+    
+    # LLM parameters for generation
+    temperature: 0.3  # Low for consistency
+    max_tokens: 4000
+    timeout: 300
+  
+  llm_config:
+    provider: "azure_openai"
+    deployment: "gpt-4.1-mini"
+    api_version: "2024-02-15-preview"
+    temperature: 0.3  # Overrides config if specified
+    max_tokens: 4000
+    timeout: 300
+  
+  dependencies:
+    packages:
+      - "langchain-openai>=0.1.0"
+      - "pyyaml>=6.0"
+      - "rich>=13.0"
+      - "azure-identity>=1.12.0"
+  
+  prompt_engineering:
+    system_prompt: |
+      You are a technical documentation specialist updating documentation based on current codebase evidence.
+      
+      Your task is to:
+      1. Compare baseline documentation against current codebase evidence
+      2. Update ONLY sections where evidence shows implementation changes
+      3. Preserve original content when no changes detected
+      4. Maintain structure, formatting, and requirement traceability
+      5. Do NOT hallucinate - ground all updates in provided evidence
+    
+    temperature_rationale: |
+      Temperature 0.3 chosen for consistency while allowing natural language:
+      - Reduces non-deterministic variation between runs
+      - Still produces fluent, natural documentation
+      - Minimizes hallucination risk
+      - Balances consistency vs creativity
+  
+  change_detection:
+    # Criteria for determining if section needs update
+    relevance_threshold: 0.3  # Confidence threshold for update decision
+    
+    # Keywords indicating implementation changes
+    change_indicators:
+      - "new file"
+      - "modified"
+      - "refactored"
+      - "migrated"
+      - "updated configuration"
+    
+    # Sections that rarely change (high threshold for updates)
+    stable_sections:
+      - "Overview"
+      - "Purpose"
+      - "Audience"
+  
+  usage_example: |
+    from delta_generator_skill import DeltaGeneratorSkill
+    
+    generator = DeltaGeneratorSkill(
+        workspace_root=Path("c:/repo"),
+        config_path=Path("skill-manifests/delta-generator.yaml")
+    )
+    
+    result = generator.execute(
+        file_name="security-architecture.md",
+        evidence=researcher_evidence,
+        save_output=True
+    )
+    
+    print(f"Generated: {result['file_name']}")
+    print(f"Updated: {result['summary']['updated']} sections")
+    print(f"Unchanged: {result['summary']['unchanged']} sections")
+  
+  validation:
+    # Post-generation validation
+    validate_output: true
+    min_sections: 1
+    max_retries: 3
+  
+  metadata:
+    execution_time_estimate: "30-120 seconds per document"
+    resource_usage: "medium (LLM calls)"
+    idempotent: false  # LLM may produce variations even with low temperature
+    cost_estimate: "$0.02-0.10 per document (depending on size)"

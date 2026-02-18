@@ -1,0 +1,182 @@
+skill:
+  name: "validation-orchestrator"
+  version: "1.0.0"
+  description: "Validates generated documentation using existing validator framework"
+  
+  author: "EVA Foundation"
+  category: "documentation"
+  tags:
+    - validation
+    - quality-assurance
+    - retry-logic
+    - feedback
+  
+  inputs:
+    - name: "content"
+      type: "string"
+      required: true
+      description: "Document content to validate"
+    
+    - name: "file_name"
+      type: "string"
+      required: true
+      description: "Name of file being validated"
+    
+    - name: "strict"
+      type: "boolean"
+      required: false
+      description: "If true, fail on warnings; if false, only fail on errors"
+      default: true
+  
+  outputs:
+    - name: "result"
+      type: "dict"
+      description: "Validation result with pass/fail and detailed feedback"
+      schema:
+        file_name: string
+        passed: boolean
+        strict_mode: boolean
+        validation_results: list[dict]
+        feedback: string
+        summary:
+          total_validators: int
+          passed_validators: int
+          failed_validators: int
+          total_errors: int
+          total_warnings: int
+        validated_at: string
+  
+  configuration:
+    # Maximum retry attempts for validation with regeneration
+    max_retries: 3
+    
+    # Strict mode by default
+    strict_mode: true
+    
+    # Validators to run (all enabled by default)
+    enabled_validators:
+      - frontmatter
+      - requirement_ids
+      - traceability
+      - structure
+  
+  validators:
+    frontmatter:
+      description: "Validates YAML frontmatter structure and required fields"
+      required_fields:
+        - title
+        - doc_id
+        - version
+        - last_updated
+        - owner
+        - status
+      severity: "error"
+    
+    requirement_ids:
+      description: "Validates requirement ID format (e.g., REQ-123, INF01)"
+      pattern: "^[A-Z]{2,4}[0-9]{2,3}$"
+      severity: "error"
+    
+    traceability:
+      description: "Validates traceability section and requirement references"
+      required_section: "Traceability"
+      link_pattern: '\[([A-Z]{2,4}[0-9]{2,3})\]\(([^)]+)\)'
+      severity: "error"
+    
+    structure:
+      description: "Validates document structure and heading hierarchy"
+      check_heading_hierarchy: true
+      check_required_sections: true
+      severity: "warning"
+  
+  dependencies:
+    # Uses existing validators from documentation generator
+    modules:
+      - "../../01-documentation-generator/src/validators.py"
+    
+    packages:
+      - "pyyaml>=6.0"
+      - "rich>=13.0"
+  
+  retry_logic:
+    # Retry configuration for execute_with_retry()
+    max_retries: 3
+    retry_on:
+      - "validation_failed"
+    
+    feedback_enhancement:
+      # Enhance feedback with specific correction instructions
+      include_examples: true
+      suggest_fixes: true
+  
+  usage_example: |
+    from validation_orchestrator_skill import ValidationOrchestratorSkill
+    
+    validator = ValidationOrchestratorSkill(
+        workspace_root=Path("c:/repo"),
+        config_path=Path("skill-manifests/validation-orchestrator.yaml")
+    )
+    
+    # Simple validation
+    result = validator.execute(
+        content=generated_content,
+        file_name="security-architecture.md"
+    )
+    
+    if result["passed"]:
+        print("✅ Validation passed!")
+    else:
+        print(f"❌ Validation failed: {result['feedback']}")
+    
+    # Validation with retry
+    def regenerate(feedback):
+        # Regenerate with corrections based on feedback
+        return generator.execute_with_corrections(feedback)
+    
+    result = validator.execute_with_retry(
+        content=generated_content,
+        file_name="security-architecture.md",
+        regenerate_func=regenerate,
+        max_retries=3
+    )
+  
+  feedback_format:
+    # Structure of validation feedback
+    format: "markdown"
+    include:
+      - validator_name
+      - severity_level
+      - error_message
+      - line_number
+      - suggested_fix
+    
+    example: |
+      VALIDATION FEEDBACK:
+      
+      ❌ 2 validator(s) failed:
+      
+      **TRACEABILITY**:
+        - ERROR: No v0.2 requirement IDs found in traceability section
+        - ERROR: Expected format: [REQ-ID](path/to/requirement.md#REQ-ID)
+      
+      **STRUCTURE**:
+        - WARNING: Heading hierarchy skip: "## Authentication" (#2 after #4)
+      
+      Please correct these issues and regenerate the document.
+  
+  validation:
+    # Meta-validation for the validator itself
+    self_test: true
+    test_cases:
+      - "valid_document.md"
+      - "missing_frontmatter.md"
+      - "invalid_traceability.md"
+  
+  metadata:
+    execution_time_estimate: "1-5 seconds per document"
+    resource_usage: "low"
+    idempotent: true
+    integration:
+      - "RepoResearcherSkill"
+      - "DeltaGeneratorSkill"
+      - "DocumentationGeneratorWorkflow"
